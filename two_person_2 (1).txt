@@ -1,0 +1,261 @@
+# MicroPython for LEGO Hardware (LEGO Education's SPIKE Prime)
+from spike import PrimeHub, LightMatrix, Button, StatusLight, ForceSensor, MotionSensor, Speaker, ColorSensor, App, DistanceSensor, Motor, MotorPair
+from spike.control import wait_for_seconds, wait_until, Timer
+import math
+import random
+
+#Setup: color on A and B - motors on E and F
+#Version: F+2
+#Changes: Skull is always the winning picture. Reduced len(all_pictures) to 36. Commented all code.
+
+hub = PrimeHub()
+
+left_light = ColorSensor('A')
+right_light = ColorSensor('B')
+left_motor = Motor('E')
+right_motor = Motor('F')
+
+#Threshold for how much reflected light the sensors detect for a "hit" - adjust up or down depending on lighting
+left_light_thresh = 25
+right_light_thresh = left_light_thresh
+
+#How long inbetween images showing up - make longer to make the game easier / slower
+blink_time = 1
+
+#Lists of pictures
+#For the waiting scroll
+spooky_pictures = ['GHOST', 'PITCHFORK', 'SKULL', 'SNAKE']
+#All possible images (36 total)
+all_pictures = ['ANGRY', 'ASLEEP', 'BUTTERFLY', 'CHESSBOARD', 'CLOCK12', 'CONFUSED', 'COW', 'DIAMOND', 'DUCK', 'FABULOUS', 'GHOST', 'GIRAFFE', 'HAPPY', 'HEART', 'HOUSE', 'MEH', 'MUSIC_CROTCHET', 'MUSIC_QUAVERS', 'PACMAN', 'PITCHFORK', 'RABBIT', 'ROLLERSKATE', 'SAD', 'SILLY', 'SKULL', 'SMILE', 'SNAKE', 'SQUARE', 'STICKFIGURE', 'SURPRISED', 'SWORD', 'TARGET', 'TORTOISE', 'TRIANGLE', 'TSHIRT', 'UMBRELLA']
+
+#Displays which image is the one to tap on. Shows a short animation before the game starts.
+#Takes the winning image as an input. Currently set to be the skull only
+def show_directions(winning_picture):
+    blink = blink_time
+    display_image = winning_picture
+    hub.light_matrix.write('TAP')
+    hub.light_matrix.show_image(display_image)
+    wait_for_seconds(3)
+    #Fun animation that wipes across the screen
+    for row in range(5):
+        for column in range(5):
+            hub.light_matrix.set_pixel(column, row, brightness = 0)
+            wait_for_seconds(0.01)
+    for row in range(5):
+        for column in range(5):
+            hub.light_matrix.set_pixel(row, column, brightness = 100)
+            wait_for_seconds(0.01)
+    for row in range(5):
+        for column in range(5):
+            hub.light_matrix.set_pixel(column, row, brightness = 0)
+            wait_for_seconds(0.01)
+
+#What the program does when it's not playing a game. Hitting any input will start the game (or the buttons on the hub to exit)
+#Cycles between all the different spooky images
+def waiting():
+    blink = blink_time
+    pictures = spooky_pictures
+    i = 0
+    right = right_light.get_reflected_light()
+    left = left_light.get_reflected_light()
+    while right < right_light_thresh and left < left_light_thresh and hub.left_button.is_pressed() is False and hub.left_button.is_pressed() is False:
+        right = right_light.get_reflected_light()
+        left = left_light.get_reflected_light()
+        hub.light_matrix.show_image(pictures[i%4 - 1])
+        i += 1
+        wait_for_seconds(blink_time)
+
+#Takes value returned by game() and displays the result, either a win or a loss
+#Takes string "left lost" or "right won" for example, or generally "right/left won/lost"
+#If a win starts the motor on the side of the winner, and shows an arrow pointing to the winner
+#If a loss, blinks arrow to loser and X
+def show_winner(result):
+    arrow = ''
+    result_string = result
+    winner = result_string.split()
+    state = ''
+    print('winner is', winner)
+    #Logic for setting up variables
+    if winner[0] == 'right':
+        arrow = 'ARROW_E'
+    elif winner[0] == 'left':
+        arrow = 'ARROW_W'
+    else:
+        hub.light_matrix.write('ERROR')
+    print('arrow is', arrow)
+    if winner[1] == 'won':
+        state = 'won'
+    elif winner[1] == 'lost':
+        state = 'lost'
+    else:
+        hub.light_matrix.write('ERROR')
+    print('state is', state)
+    #Logic for acting on a win/loss
+    if state == 'won':
+        print('doing won', arrow)
+        hub.light_matrix.show_image(arrow)
+        if arrow == 'ARROW_E':
+            right_motor.start(30)
+        elif arrow == 'ARROW_W':
+            left_motor.start(30)
+        else:
+            hub.light_matrix.show_image('SAD')
+        wait_for_seconds(3)
+        right_motor.stop()
+        left_motor.stop()
+    elif state == 'lost':
+        print('doing lost', arrow)
+        for i in range(2):
+            hub.light_matrix.show_image('NO')
+            wait_for_seconds(1)
+            hub.light_matrix.show_image(str(arrow))
+            wait_for_seconds(1)
+    else:
+        print('ERROR with show_winner()')
+
+
+#The active game - takes the winning picture as an input. Currently set to be the skull only right now or spooky_pictures[2]
+def game(picture):
+    #Setting up variables
+    print('in game', picture)
+    switch_frame = round(random.random() * 10)
+    print('switch', picture)
+    winner = ''
+    print('winner = ', picture)
+    game_ended = False
+    print('game_ended', picture)
+    winning_picture = picture
+    print('winning_picture', picture)
+    blink = blink_time
+    print('blink_time', picture)
+    pictures = all_pictures
+    print('pictures', picture)
+    #Removes the winning picture from the pool of random images it could show
+    pictures.remove(winning_picture)
+    print('remove', picture)
+    #When images_shown = images_before_end, displays the winning image
+    images_shown = 0
+    #Random number between 0 and 9
+    images_before_end = round(random.random() * 10)
+    print('before slideshow', images_shown)
+    while game_ended == False:
+        #Shows random images until images_shown = images_before_end. If an input is read, that side loses
+        while images_shown <= images_before_end:
+            print('inside slideshow', images_shown)
+            right = right_light.get_reflected_light()
+            left = left_light.get_reflected_light()
+            hub.light_matrix.show_image(str(pictures[random.randint(0,len(pictures) - 1)]))
+            images_shown += 1
+            if right  > right_light_thresh:
+                winner = 'right lost'
+                game_ended = True
+            elif left  > left_light_thresh:
+                winner = 'left lost'
+                game_ended = True
+            else:
+                wait_for_seconds(blink_time)
+        if game_ended == False:
+            #If both players make it through the losing photos, shows the winning photo
+            print('before winning picture. game_ended:', game_ended)
+            hub.light_matrix.show_image(winning_picture)        
+            #Waits for an input from right or left to win the round
+            while game_ended == False:
+                right = right_light.get_reflected_light()
+                left = left_light.get_reflected_light()
+                if right  > right_light_thresh:
+                    winner = 'right won'
+                    game_ended = True
+                elif left  > left_light_thresh:
+                    winner = 'left won'
+                    game_ended = True
+                else:
+                    wait_for_seconds(0.1)
+    #Puts the winning picture back in the pool to stop a bug
+    pictures.append(winning_picture)
+    #Returns string "left/right won/lost"
+    return winner
+
+#Crashes the program if one of the left or right buttons on the hub is pressed. This lets me exit the game and not get stuck in a while True loop
+def check_if_exit():
+    if hub.left_button.is_pressed() or hub.left_button.is_pressed():
+        #Because exit() isn't a defined function, calling it crashes the program
+        exit()
+    else:
+        pass
+
+#Shows the score - scrolls across screen
+def show_score(score):
+    score = score
+    score_display = str(score[0]) + ' to ' + str(score[1])
+    hub.light_matrix.write(score_display)
+
+
+#When one person wins a set, their side's motor turns faster, and the screen scrolls that they won, then motors stop
+def show_overall_winner(winner):
+    if winner == 'left':
+        left_motor.start(60)
+        hub.light_matrix.write('LEFT WON')
+    elif winner == 'right':
+        right_motor.start(60)
+        hub.light_matrix.write('RIGHT WON')
+    else:
+        print('ERROR WITH show_overall_winner. winner:', winner)
+    left_motor.stop()
+    right_motor.stop()    
+
+
+#This is the layout for the game, takes i (number of times it's run) as an input for debugging purposes
+#When this is called, it plays one whole game consisting of multiple rounds until a winner is found
+def whole_program(i):
+    #Starts the score at 0 to 0 and sets up variables
+    score = [0,0]
+    a = i
+    overall_winner = False
+    while overall_winner == False:
+        #Checks if a player has won yet. If they have, runs show_overall_winner and exits the loop
+        if (score[0] - score[1]) == 3 or score[0] == 3:
+            show_overall_winner('left')
+            overall_winner = True
+        elif (score[1] - score[0]) == 3 or score[1] == 3:
+            show_overall_winner('right')
+            overall_winner = True
+        else:
+            #If player hasn't won, shows the current score, then the directions, then runs the game, updates score, and shows results.
+            check_if_exit()
+            print('before choosing picture', a)
+            show_score(score)
+            the_winning_picture = spooky_pictures[2]
+            check_if_exit()
+            print('before show_directions', a)
+            show_directions(the_winning_picture)
+            check_if_exit()
+            print('before game()', a)
+            result = game(the_winning_picture)
+            if result == 'left lost':
+                score[0] = score[0] - 1
+            elif result == 'right lost':
+                score[1] = score[1] - 1
+            elif result == 'left won':
+                score[0] = score[0] + 1
+            elif result == 'right won':
+                score[1] = score[1] + 1
+            else:
+                print('ERROR WITH SCORE. Result:', result)
+            print('before show_winner', a)
+            show_winner(result)
+            check_if_exit()
+    check_if_exit()
+
+
+#The code that actually runs when the program starts
+#Keeps running new games continuously until a button is hit on the hub
+#Keeps track of number of games played
+i = 0
+while hub.left_button.is_pressed() is False and hub.left_button.is_pressed() is False:
+    i += 1
+    print('loop', i)
+    print('before waiting', i)
+    waiting()
+    print('after waiting', i)
+    whole_program(i)
+print('DONE')

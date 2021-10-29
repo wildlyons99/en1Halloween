@@ -1,0 +1,29 @@
+body{
+    background-color: black;
+    color: white;
+}
+
+.score {
+    color: white;
+    text-align: center;
+
+}
+
+.footer{
+    background-color: #eb6123;
+    color: white;
+    margin-top: 30px;
+    padding-top: 20px;
+    bottom: 0px;
+    width: 100%;
+}
+
+.mainimage {
+		        width: 300px;
+		        height: 392px;
+		    }
+
+.playimage {
+    width: 266px;
+    height: 192px;
+}
